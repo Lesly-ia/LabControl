@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LabControl System - Reservas de Laboratorio</title>
+  <meta name="description" content="Sistema de reservas de laboratorios de cómputo para la facultad con Supabase REST API y Tailwind CSS.">
+  
+  <!-- Tailwind CSS vía CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              500: '#06b6d4',
+              600: '#0891b2',
+              700: '#0e7490',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Fuentes e Iconos CDN -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    code, pre, .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.25s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-white">
+
+  <!-- Encabezado de la Facultad -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center space-x-3">
+        <div class="h-11 w-11 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25 text-xl font-bold">
+          <i class="fa-solid fa-desktop"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-xl font-extrabold text-white tracking-tight">LabControl System</h1>
+            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+              Facultad
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Sistema Oficial de Reserva de Equipos de Cómputo</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button 
+          type="button" 
+          onclick="toggleConfigModal(true)" 
+          class="flex items-center space-x-2 text-xs px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+        >
+          <i class="fa-solid fa-database text-cyan-400"></i>
+          <span>Configurar Supabase</span>
+          <span id="connectionDot" class="h-2 w-2 rounded-full bg-emerald-400"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenido Principal -->
+  <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8">
+    
+    <!-- Contenedor Dinámico para Alertas Visuales -->
+    <div id="alertContainer" class="mb-6 hidden"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      
+      <!-- Columna Izquierda: Formulario de Reserva -->
+      <div class="lg:col-span-7 bg-slate-900/95 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur">
+        
+        <div class="border-b border-slate-800 pb-4 mb-6">
+          <span class="text-xs uppercase font-bold tracking-wider text-cyan-400">Nueva Solicitud</span>
+          <h2 class="text-2xl font-bold text-white mt-1">Reservar Equipo de Cómputo</h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Valida automáticamente en Supabase si el equipo está disponible antes de procesar el registro.
+          </p>
+        </div>
+
+        <form id="reservationForm" class="space-y-5" novalidate>
+          
+          <!-- 1. Nombre del Estudiante -->
+          <div>
+            <label for="studentName" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+              <i class="fa-solid fa-user-graduate text-cyan-400 mr-1.5"></i> Nombre del Estudiante <span class="text-rose-400">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="studentName" 
+              name="studentName"
+              placeholder="Ej. Lesly Velandia" 
+              class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition text-sm"
+              required
+            >
+          </div>
+
+          <!-- 2. Equipo de Cómputo -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label for="equipmentCode" class="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                <i class="fa-solid fa-computer text-cyan-400 mr-1.5"></i> Equipo de Cómputo <span class="text-rose-400">*</span>
+              </label>
+              <span class="text-[11px] text-slate-500">Formato: PC-Lab1-01</span>
+            </div>
+            <input 
+              type="text" 
+              id="equipmentCode" 
+              name="equipmentCode"
+              placeholder="Ej. PC-Lab1-01" 
+              class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition uppercase text-sm font-mono"
+              required
+            >
+            
+            <!-- Botones de selección rápida -->
+            <div class="mt-2 flex flex-wrap gap-1.5 items-center">
+              <span class="text-[11px] text-slate-400 mr-1">Rápidos:</span>
+              <button type="button" onclick="setPreset('PC-Lab1-01')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 font-mono transition">PC-01</button>
+              <button type="button" onclick="setPreset('PC-Lab1-02')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 font-mono transition">PC-02</button>
+              <button type="button" onclick="setPreset('PC-Lab1-03')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 font-mono transition">PC-03</button>
+              <button type="button" onclick="setPreset('PC-Lab1-04')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 font-mono transition">PC-04</button>
+              <button type="button" onclick="setPreset('PC-Lab1-05')" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 font-mono transition">PC-05</button>
+            </div>
+          </div>
+
+          <!-- 3 y 4. Fecha de Reserva y Hora de Inicio -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
+            <!-- Fecha de Reserva -->
+            <div>
+              <label for="reservationDate" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                <i class="fa-solid fa-calendar-day text-cyan-400 mr-1.5"></i> Fecha de Reserva <span class="text-rose-400">*</span>
+              </label>
+              <input 
+                type="date" 
+                id="reservationDate" 
+                name="reservationDate"
+                class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition text-sm [color-scheme:dark]"
+                required
+              >
+            </div>
+
+            <!-- Hora de Inicio -->
+            <div>
+              <label for="startTime" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                <i class="fa-solid fa-clock text-cyan-400 mr-1.5"></i> Hora de Inicio <span class="text-rose-400">*</span>
+              </label>
+              <select 
+                id="startTime" 
+                name="startTime"
+                class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition text-sm [color-scheme:dark]"
+                required
+              >
+                <option value="">Seleccione una hora</option>
+                <option value="07:00">07:00 AM</option>
+                <option value="08:00">08:00 AM</option>
+                <option value="09:00">09:00 AM</option>
+                <option value="10:00">10:00 AM</option>
+                <option value="11:00">11:00 AM</option>
+                <option value="12:00">12:00 PM</option>
+                <option value="13:00">01:00 PM</option>
+                <option value="14:00">02:00 PM</option>
+                <option value="15:00">03:00 PM</option>
+                <option value="16:00">04:00 PM</option>
+                <option value="17:00">05:00 PM</option>
+                <option value="18:00">06:00 PM</option>
+              </select>
+            </div>
+
+          </div>
+
+          <!-- Botón de Envío -->
+          <button 
+            type="submit" 
+            id="submitBtn"
+            class="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 active:scale-[0.99] text-white font-bold shadow-lg shadow-cyan-500/25 transition-all duration-200 flex items-center justify-center space-x-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <span id="btnIcon"><i class="fa-solid fa-calendar-check mr-1.5"></i></span>
+            <span id="btnText">Confirmar y Registrar Reserva (POST)</span>
+          </button>
+
+        </form>
+
+        <!-- Pie técnico del formulario -->
+        <div class="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+          <span class="flex items-center space-x-1.5">
+            <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+            <span>Validación previa: <code class="text-cyan-400 font-mono">equipo, fecha_reserva, hora_inicio</code></span>
+          </span>
+          <span class="font-mono text-slate-400">Supabase REST API</span>
+        </div>
+
+      </div>
+
+      <!-- Columna Derecha: Información y Lista de Reservas en Vivo -->
+      <div class="lg:col-span-5 space-y-6">
+        
+        <!-- Panel de Estado y Parámetros en Español -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl text-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-white text-sm flex items-center space-x-2">
+              <i class="fa-solid fa-code text-cyan-400"></i>
+              <span>Consultas PostgREST en Español</span>
+            </h3>
+            <span class="font-mono text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">tabla: <span id="lblTableName">reservas</span></span>
+          </div>
+
+          <div class="space-y-2">
+            <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300">
+              <span class="text-amber-400 font-bold">GET</span> /rest/v1/<span class="tableNameDisplay">reservas</span>?equipo=eq.X&amp;fecha_reserva=eq.Y&amp;hora_inicio=eq.Z
+            </div>
+            <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300">
+              <span class="text-emerald-400 font-bold">POST</span> /rest/v1/<span class="tableNameDisplay">reservas</span>
+              <div class="text-[10px] text-slate-400 mt-0.5">Payload: {"estudiante", "equipo", "fecha_reserva", "hora_inicio", "created_at"}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabla de Reservas en Tiempo Real -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="font-bold text-white text-sm flex items-center space-x-2">
+                <i class="fa-solid fa-list-check text-cyan-400"></i>
+                <span>Reservas Registradas</span>
+              </h3>
+              <p class="text-[11px] text-slate-400 mt-0.5">Disponibilidad en tiempo real</p>
+            </div>
+            <button 
+              type="button" 
+              onclick="fetchReservationsList()" 
+              class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded-lg border border-slate-700 transition flex items-center space-x-1 cursor-pointer"
+              title="Recargar reservas desde Supabase"
+            >
+              <i class="fa-solid fa-rotate mr-1"></i>
+              <span>Actualizar</span>
+            </button>
+          </div>
+
+          <div id="reservationsListContainer" class="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+            <div class="text-center py-6 text-slate-500 text-xs">
+              <i class="fa-solid fa-spinner fa-spin text-lg mb-2 block"></i>
+              Cargando reservas...
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Modal de Configuración de Supabase -->
+  <div id="configModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden animate-fade-in">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 sm:p-7 shadow-2xl max-h-[92vh] overflow-y-auto">
+      
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div class="flex items-center space-x-2.5">
+          <div class="h-8 w-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <i class="fa-solid fa-database text-sm"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-white text-sm">Configuración Directa de Supabase</h3>
+            <p class="text-[11px] text-slate-400">Conecta tu proyecto con las columnas en español</p>
+          </div>
+        </div>
+        <button type="button" onclick="toggleConfigModal(false)" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-base"></i>
+        </button>
+      </div>
+
+      <div class="mt-5 space-y-4 text-xs">
+        <div>
+          <label for="cfgUrl" class="block font-semibold uppercase text-slate-300 mb-1">
+            Supabase Project URL:
+          </label>
+          <input 
+            type="text" 
+            id="cfgUrl" 
+            placeholder="https://xyzabcdefg.supabase.co" 
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:border-cyan-500 outline-none"
+          >
+        </div>
+
+        <div>
+          <label for="cfgKey" class="block font-semibold uppercase text-slate-300 mb-1">
+            Supabase Anon Public Key:
+          </label>
+          <input 
+            type="password" 
+            id="cfgKey" 
+            placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." 
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:border-cyan-500 outline-none"
+          >
+        </div>
+
+        <div>
+          <label for="cfgTable" class="block font-semibold uppercase text-slate-300 mb-1">
+            Nombre de la Tabla:
+          </label>
+          <input 
+            type="text" 
+            id="cfgTable" 
+            value="reservas" 
+            placeholder="reservas" 
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:border-cyan-500 outline-none"
+          >
+        </div>
+
+        <div id="testConnectionStatus" class="hidden p-3 rounded-xl border text-xs"></div>
+
+        <!-- Script SQL para copiar en Supabase -->
+        <div class="pt-3 border-t border-slate-800">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="font-bold text-cyan-400">SQL para crear la tabla en Supabase:</span>
+            <button 
+              type="button" 
+              onclick="copySqlScript()" 
+              id="copySqlBtn"
+              class="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 cursor-pointer"
+            >
+              <i class="fa-solid fa-copy mr-1"></i>
+              <span>Copiar SQL</span>
+            </button>
+          </div>
+          <pre class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 overflow-x-auto leading-relaxed">
+create table public.reservas (
+  id uuid default gen_random_uuid() primary key,
+  estudiante text not null,
+  equipo text not null,
+  fecha_reserva date not null,
+  hora_inicio text not null,
+  created_at timestamp with time zone default now() not null,
+  unique (equipo, fecha_reserva, hora_inicio)
+);
+
+alter table public.reservas enable row level security;
+create policy "Lectura pública" on public.reservas for select using (true);
+create policy "Inserción pública" on public.reservas for insert with check (true);
+create policy "Eliminación pública" on public.reservas for delete using (true);</pre>
+        </div>
+
+        <div class="pt-3 flex items-center justify-end space-x-2.5">
+          <button 
+            type="button" 
+            onclick="testSupabaseConnection()" 
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold cursor-pointer transition"
+          >
+            Probar Conexión
+          </button>
+          <button 
+            type="button" 
+            onclick="saveSupabaseConfig()" 
+            class="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold shadow-lg shadow-cyan-600/30 cursor-pointer transition"
+          >
+            Guardar Credenciales
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Pie de Página -->
+  <footer class="border-t border-slate-800 bg-slate-950 py-5 text-center text-xs text-slate-500">
+    <div class="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <span>LabControl System &copy; Facultad de Ingeniería</span>
+      <span class="font-mono text-slate-400">Vanilla JS (ES6+) &bull; Tailwind CSS &bull; Supabase REST</span>
+    </div>
+  </footer>
+
+  <!-- SCRIPT VANILLA JS (ES6+) CON TODA LA LÓGICA -->
+  <script>
+    // -------------------------------------------------------------
+    // 1. CONFIGURACIÓN DE SUPABASE Y ESTADO
+    // -------------------------------------------------------------
+    const CONFIG = {
+      supabaseUrl: localStorage.getItem('labcontrol_sb_url') || '',
+      supabaseKey: localStorage.getItem('labcontrol_sb_key') || '',
+      tableName: localStorage.getItem('labcontrol_sb_table') || 'reservas'
+    };
+
+    // Base de datos local en memoria (fallback para demostración inmediata si no hay API key real configurada)
+    const today = new Date().toISOString().split('T')[0];
+    let localReservationsDB = [
+      {
+        id: "res-001",
+        estudiante: "Lesly Velandia",
+        equipo: "PC-Lab1-01",
+        fecha_reserva: today,
+        hora_inicio: "10:00",
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "res-002",
+        estudiante: "Andrés Martínez",
+        equipo: "PC-Lab1-03",
+        fecha_reserva: today,
+        hora_inicio: "08:00",
+        created_at: new Date().toISOString()
+      }
+    ];
+
+    // Inicializar inputs
+    const dateInput = document.getElementById('reservationDate');
+    dateInput.min = today;
+    dateInput.value = today;
+
+    document.getElementById('cfgUrl').value = CONFIG.supabaseUrl;
+    document.getElementById('cfgKey').value = CONFIG.supabaseKey;
+    document.getElementById('cfgTable').value = CONFIG.tableName;
+    updateTableLabels(CONFIG.tableName);
+
+    function updateTableLabels(name) {
+      document.getElementById('lblTableName').innerText = name;
+      document.querySelectorAll('.tableNameDisplay').forEach(el => el.innerText = name);
+    }
+
+    function setPreset(code) {
+      document.getElementById('equipmentCode').value = code;
+    }
+
+    function isRealSupabase() {
+      return Boolean(
+        CONFIG.supabaseUrl && 
+        CONFIG.supabaseKey && 
+        CONFIG.supabaseUrl.includes('supabase.co') && 
+        CONFIG.supabaseKey.length > 20
+      );
+    }
+
+    // -------------------------------------------------------------
+    // 2. MODAL Y CONFIGURACIÓN
+    // -------------------------------------------------------------
+    function toggleConfigModal(show) {
+      const modal = document.getElementById('configModal');
+      if (show) {
+        modal.classList.remove('hidden');
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function saveSupabaseConfig() {
+      const url = document.getElementById('cfgUrl').value.trim();
+      const key = document.getElementById('cfgKey').value.trim();
+      const table = document.getElementById('cfgTable').value.trim() || 'reservas';
+
+      CONFIG.supabaseUrl = url;
+      CONFIG.supabaseKey = key;
+      CONFIG.tableName = table;
+
+      localStorage.setItem('labcontrol_sb_url', url);
+      localStorage.setItem('labcontrol_sb_key', key);
+      localStorage.setItem('labcontrol_sb_table', table);
+
+      updateTableLabels(table);
+      toggleConfigModal(false);
+      fetchReservationsList();
+      showAlert('info', 'Configuración Guardada', 'Las credenciales de Supabase han sido actualizadas.');
+    }
+
+    async function testSupabaseConnection() {
+      const url = document.getElementById('cfgUrl').value.trim();
+      const key = document.getElementById('cfgKey').value.trim();
+      const table = document.getElementById('cfgTable').value.trim() || 'reservas';
+      const statusDiv = document.getElementById('testConnectionStatus');
+
+      statusDiv.classList.remove('hidden');
+      statusDiv.className = 'p-3 rounded-xl border text-xs bg-cyan-950/50 border-cyan-500/40 text-cyan-200';
+      statusDiv.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Verificando conexión con Supabase...';
+
+      if (!url || !key) {
+        statusDiv.className = 'p-3 rounded-xl border text-xs bg-amber-950/50 border-amber-500/40 text-amber-200';
+        statusDiv.innerHTML = 'Por favor ingresa la URL y la Anon Key de Supabase.';
+        return;
+      }
+
+      try {
+        const cleanUrl = url.replace(/\/$/, '');
+        const testEndpoint = `${cleanUrl}/rest/v1/${table}?select=*&limit=1`;
+        const res = await fetch(testEndpoint, {
+          method: 'GET',
+          headers: {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (res.ok) {
+          statusDiv.className = 'p-3 rounded-xl border text-xs bg-emerald-950/50 border-emerald-500/40 text-emerald-200';
+          statusDiv.innerHTML = `✅ ¡Conexión exitosa! (${res.status} OK). Tabla "${table}" accesible.`;
+          document.getElementById('connectionDot').className = 'h-2 w-2 rounded-full bg-emerald-400 animate-pulse';
+        } else {
+          const errText = await res.text();
+          statusDiv.className = 'p-3 rounded-xl border text-xs bg-rose-950/50 border-rose-500/40 text-rose-200';
+          statusDiv.innerHTML = `❌ Error HTTP ${res.status}: ${errText}`;
+        }
+      } catch (err) {
+        statusDiv.className = 'p-3 rounded-xl border text-xs bg-rose-950/50 border-rose-500/40 text-rose-200';
+        statusDiv.innerHTML = `❌ Error de red / CORS: ${err.message}`;
+      }
+    }
+
+    function copySqlScript() {
+      const sql = `-- Script de creación de tabla con columnas en español
+create table public.reservas (
+  id uuid default gen_random_uuid() primary key,
+  estudiante text not null,
+  equipo text not null,
+  fecha_reserva date not null,
+  hora_inicio text not null,
+  created_at timestamp with time zone default now() not null,
+  unique (equipo, fecha_reserva, hora_inicio)
+);
+
+alter table public.reservas enable row level security;
+create policy "Lectura pública" on public.reservas for select using (true);
+create policy "Inserción pública" on public.reservas for insert with check (true);
+create policy "Eliminación pública" on public.reservas for delete using (true);`;
+
+      navigator.clipboard.writeText(sql);
+      const btn = document.getElementById('copySqlBtn');
+      btn.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-1"></i><span>¡Copiado!</span>';
+      setTimeout(() => {
+        btn.innerHTML = '<i class="fa-solid fa-copy mr-1"></i><span>Copiar SQL</span>';
+      }, 2000);
+    }
+
+    // -------------------------------------------------------------
+    // 3. ALERTAS VISUALES CON TAILWIND CSS
+    // -------------------------------------------------------------
+    function showAlert(type, title, message) {
+      const container = document.getElementById('alertContainer');
+      const styles = {
+        success: {
+          bg: 'bg-emerald-950/90 border-emerald-500/50 text-emerald-100 shadow-emerald-900/20',
+          icon: '<i class="fa-solid fa-circle-check text-emerald-400 text-xl"></i>'
+        },
+        error: {
+          bg: 'bg-rose-950/90 border-rose-500/50 text-rose-100 shadow-rose-900/20',
+          icon: '<i class="fa-solid fa-triangle-exclamation text-rose-400 text-xl"></i>'
+        },
+        warning: {
+          bg: 'bg-amber-950/90 border-amber-500/50 text-amber-100 shadow-amber-900/20',
+          icon: '<i class="fa-solid fa-circle-exclamation text-amber-400 text-xl"></i>'
+        },
+        info: {
+          bg: 'bg-cyan-950/90 border-cyan-500/50 text-cyan-100 shadow-cyan-900/20',
+          icon: '<i class="fa-solid fa-circle-info text-cyan-400 text-xl"></i>'
+        }
+      }[type] || styles.info;
+
+      container.innerHTML = `
+        <div class="border rounded-2xl p-4 sm:p-5 ${styles.bg} shadow-2xl transition-all animate-fade-in">
+          <div class="flex items-start space-x-3.5">
+            <div class="shrink-0 mt-0.5">${styles.icon}</div>
+            <div class="flex-1 text-xs sm:text-sm">
+              <div class="font-bold tracking-wide">${title}</div>
+              <div class="mt-1 opacity-90 leading-relaxed">${message}</div>
+            </div>
+            <button type="button" onclick="document.getElementById('alertContainer').classList.add('hidden')" class="text-slate-400 hover:text-white transition ml-2">
+              <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+          </div>
+        </div>
+      `;
+      container.classList.remove('hidden');
+    }
+
+    function setLoading(isLoading) {
+      const btn = document.getElementById('submitBtn');
+      const icon = document.getElementById('btnIcon');
+      const text = document.getElementById('btnText');
+      if (isLoading) {
+        btn.disabled = true;
+        icon.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>';
+        text.innerText = 'Validando disponibilidad previa...';
+      } else {
+        btn.disabled = false;
+        icon.innerHTML = '<i class="fa-solid fa-calendar-check mr-1.5"></i>';
+        text.innerText = 'Confirmar y Registrar Reserva (POST)';
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 4. CONSULTAR LISTADO DE RESERVAS
+    // -------------------------------------------------------------
+    async function fetchReservationsList() {
+      const container = document.getElementById('reservationsListContainer');
+      try {
+        let list = [];
+        if (isRealSupabase()) {
+          const cleanUrl = CONFIG.supabaseUrl.replace(/\/$/, '');
+          const endpoint = `${cleanUrl}/rest/v1/${CONFIG.tableName}?select=*&order=fecha_reserva.desc,hora_inicio.asc&limit=20`;
+          const res = await fetch(endpoint, {
+            method: 'GET',
+            headers: {
+              'apikey': CONFIG.supabaseKey,
+              'Authorization': `Bearer ${CONFIG.supabaseKey}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          if (res.ok) {
+            list = await res.json();
+          } else {
+            list = localReservationsDB;
+          }
+        } else {
+          list = localReservationsDB;
+        }
+
+        if (list.length === 0) {
+          container.innerHTML = '<div class="text-center py-6 text-slate-500 text-xs">No hay reservas registradas aún.</div>';
+          return;
+        }
+
+        container.innerHTML = list.map(item => `
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs hover:border-slate-700 transition">
+            <div class="space-y-0.5">
+              <div class="font-bold text-white flex items-center space-x-2">
+                <span class="text-cyan-400 font-mono">${item.equipo || item.equipment_code}</span>
+                <span class="text-slate-400 font-normal">&bull;</span>
+                <span class="truncate max-w-[130px]">${item.estudiante || item.student_name}</span>
+              </div>
+              <div class="text-[11px] text-slate-400 flex items-center space-x-2">
+                <span><i class="fa-solid fa-calendar-day mr-1 text-slate-500"></i>${item.fecha_reserva || item.reservation_date}</span>
+                <span><i class="fa-solid fa-clock mr-1 text-emerald-400"></i>${item.hora_inicio || item.start_time}</span>
+              </div>
+            </div>
+            <button 
+              type="button" 
+              onclick="deleteReservation('${item.id}', '${item.equipo || item.equipment_code}')"
+              class="text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 p-1.5 rounded-lg transition" 
+              title="Liberar reserva"
+            >
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        `).join('');
+
+      } catch (err) {
+        console.warn('Error al listar reservas:', err);
+        container.innerHTML = '<div class="text-center py-4 text-slate-500 text-xs">Modo local activo.</div>';
+      }
+    }
+
+    async function deleteReservation(id, equipo) {
+      if (!confirm(`¿Deseas cancelar y liberar la reserva del equipo ${equipo}?`)) return;
+
+      try {
+        if (isRealSupabase()) {
+          const cleanUrl = CONFIG.supabaseUrl.replace(/\/$/, '');
+          await fetch(`${cleanUrl}/rest/v1/${CONFIG.tableName}?id=eq.${id}`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': CONFIG.supabaseKey,
+              'Authorization': `Bearer ${CONFIG.supabaseKey}`
+            }
+          });
+        }
+        localReservationsDB = localReservationsDB.filter(r => r.id !== id);
+        fetchReservationsList();
+        showAlert('info', 'Reserva Liberada', `El equipo ${equipo} ha sido liberado exitosamente.`);
+      } catch (err) {
+        showAlert('error', 'Error al Eliminar', err.message);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 5. MANEJADOR DE ENVÍO CON e.preventDefault(), VALIDACIÓN PREVIA Y POST
+    // -------------------------------------------------------------
+    document.getElementById('reservationForm').addEventListener('submit', async function(e) {
+      // 1. Prevenir el envío por defecto del formulario
+      e.preventDefault();
+
+      // 2. Captura y normalización de valores
+      const studentNameInput = document.getElementById('studentName');
+      const equipmentCodeInput = document.getElementById('equipmentCode');
+      const reservationDateInput = document.getElementById('reservationDate');
+      const startTimeInput = document.getElementById('startTime');
+
+      const estudiante = studentNameInput.value.trim();
+      const equipo = equipmentCodeInput.value.trim().toUpperCase();
+      const fecha_reserva = reservationDateInput.value.trim();
+      const hora_inicio = startTimeInput.value.trim();
+
+      // 3. Validación de campos vacíos en el cliente
+      if (!estudiante || !equipo || !fecha_reserva || !hora_inicio) {
+        showAlert(
+          'warning', 
+          'Campos Incompletos', 
+          'Todos los campos son obligatorios. Por favor diligencie el Nombre del Estudiante, Equipo, Fecha de Reserva y Hora de Inicio.'
+        );
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        let conflictFound = false;
+        let conflictData = null;
+
+        // 4. PASO A: Validación previa mediante GET a Supabase REST API
+        // Consulta filtrada usando los nombres de columnas en español: equipo, fecha_reserva, hora_inicio
+        if (isRealSupabase()) {
+          const cleanUrl = CONFIG.supabaseUrl.replace(/\/$/, '');
+          const checkUrl = `${cleanUrl}/rest/v1/${CONFIG.tableName}?equipo=eq.${encodeURIComponent(equipo)}&fecha_reserva=eq.${encodeURIComponent(fecha_reserva)}&hora_inicio=eq.${encodeURIComponent(hora_inicio)}&select=*`;
+          
+          const checkResponse = await fetch(checkUrl, {
+            method: 'GET',
+            headers: {
+              'apikey': CONFIG.supabaseKey,
+              'Authorization': `Bearer ${CONFIG.supabaseKey}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!checkResponse.ok) {
+            const errData = await checkResponse.json().catch(() => ({}));
+            throw new Error(errData.message || `Error HTTP ${checkResponse.status} al verificar disponibilidad en Supabase.`);
+          }
+
+          const existingRecords = await checkResponse.json();
+          if (Array.isArray(existingRecords) && existingRecords.length > 0) {
+            conflictFound = true;
+            conflictData = existingRecords[0];
+          }
+        } else {
+          // Modo local de simulación para pruebas instantáneas
+          await new Promise(resolve => setTimeout(resolve, 350));
+          const match = localReservationsDB.find(r => 
+            (r.equipo || r.equipment_code).toUpperCase() === equipo &&
+            (r.fecha_reserva || r.reservation_date) === fecha_reserva &&
+            (r.hora_inicio || r.start_time) === hora_inicio
+          );
+          if (match) {
+            conflictFound = true;
+            conflictData = match;
+          }
+        }
+
+        // 5. Si ya existe una reserva -> Mostrar alerta visual de error de disponibilidad
+        if (conflictFound) {
+          const existingStudent = conflictData.estudiante || conflictData.student_name || 'otro estudiante';
+          showAlert(
+            'error',
+            'Equipo No Disponible',
+            `El equipo <strong>${equipo}</strong> ya se encuentra reservado para la fecha <strong>${fecha_reserva}</strong> a las <strong>${hora_inicio}</strong> por <em>${existingStudent}</em>. Por favor elija otro equipo o franja horaria.`
+          );
+          setLoading(false);
+          return;
+        }
+
+        // 6. PASO B: Si el equipo está disponible, enviar mediante fetch() POST en formato JSON
+        const payload = {
+          estudiante: estudiante,
+          equipo: equipo,
+          fecha_reserva: fecha_reserva,
+          hora_inicio: hora_inicio,
+          created_at: new Date().toISOString()
+        };
+
+        if (isRealSupabase()) {
+          const cleanUrl = CONFIG.supabaseUrl.replace(/\/$/, '');
+          const insertUrl = `${cleanUrl}/rest/v1/${CONFIG.tableName}`;
+
+          const insertResponse = await fetch(insertUrl, {
+            method: 'POST',
+            headers: {
+              'apikey': CONFIG.supabaseKey,
+              'Authorization': `Bearer ${CONFIG.supabaseKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (!insertResponse.ok) {
+            const errData = await insertResponse.json().catch(() => ({}));
+            throw new Error(errData.message || `Error HTTP ${insertResponse.status} al insertar en Supabase.`);
+          }
+        } else {
+          // Guardar en la base de datos local
+          payload.id = 'res-' + Math.random().toString(36).substr(2, 9);
+          localReservationsDB.unshift(payload);
+        }
+
+        // 7. Alerta visual de éxito
+        showAlert(
+          'success',
+          '¡Reserva Confirmada Exitosamente!',
+          `La reserva del equipo <strong>${equipo}</strong> ha sido registrada con éxito para el estudiante <strong>${estudiante}</strong> el día <strong>${fecha_reserva}</strong> a las <strong>${hora_inicio}</strong>.`
+        );
+
+        // Limpiar el campo del estudiante para una nueva solicitud manteniendo la fecha
+        studentNameInput.value = '';
+        fetchReservationsList();
+
+      } catch (error) {
+        console.error('Error durante la solicitud:', error);
+        showAlert(
+          'error',
+          'Error en la Comunicación con Supabase',
+          error.message || 'No fue posible completar la reserva. Compruebe la URL del proyecto, la API key y los permisos RLS en Supabase.'
+        );
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // Cargar listado inicial
+    fetchReservationsList();
+  </script>
+</body>
+</html>
